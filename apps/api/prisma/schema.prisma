@@ -1,0 +1,191 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+// ─── Users ───────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships   WorkspaceMember[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revoked   Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ─── Workspaces ──────────────────────────────────────────
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members   WorkspaceMember[]
+  documents Document[]
+  apiKeys   ApiKey[]
+
+  @@map("workspaces")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  keyHash     String    @unique
+  keyPrefix   String
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("api_keys")
+}
+
+// ─── Documents ───────────────────────────────────────────
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Document {
+  id           String         @id @default(cuid())
+  workspaceId  String
+  name         String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String
+  status       DocumentStatus @default(PENDING)
+  errorMessage String?
+  metadata     Json           @default("{}")
+  chunkCount   Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunks        DocumentChunk[]
+  ingestionJobs IngestionJob[]
+
+  @@index([workspaceId])
+  @@index([status])
+  @@map("documents")
+}
+
+// ─── Ingestion Jobs ──────────────────────────────────────
+
+enum IngestionJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model IngestionJob {
+  id           String             @id @default(cuid())
+  documentId   String
+  bullJobId    String?
+  status       IngestionJobStatus @default(QUEUED)
+  attempts     Int                @default(0)
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime           @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("ingestion_jobs")
+}
+
+// ─── Chunks + Embeddings ─────────────────────────────────
+
+model DocumentChunk {
+  id          String   @id @default(cuid())
+  documentId  String
+  workspaceId String
+  content     String
+  chunkIndex  Int
+  startChar   Int
+  endChar     Int
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([workspaceId])
+  @@map("document_chunks")
+}
+
+// ─── Query History ───────────────────────────────────────
+
+model QueryHistory {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String?
+  query       String
+  answer      String
+  sources     Json
+  tokensUsed  Int      @default(0)
+  latencyMs   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId])
+  @@map("query_history")
+}

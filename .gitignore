@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+build
+.env
+*.env.local
+generated
+coverage
+.DS_Store
+.idea
