@@ -4,6 +4,7 @@ import { Logger } from '@nestjs/common';
 import { PrismaService } from '@/database/prisma.service';
 import { StorageService } from '@/modules/storage/storage.service';
 import { INGESTION_QUEUE } from './ingestion.constants';
+import { DocumentStatus, IngestionJobStatus } from '@/generated/prisma/client';
 
 export interface IngestionJobData {
   documentId: string;
@@ -32,7 +33,7 @@ export class IngestionProcessor extends WorkerHost {
     const { documentId, workspaceId } = job.data;
     this.logger.log(`Processing document: ${documentId}`);
 
-    await this.updateDocumentStatus(documentId, 'PROCESSING');
+    await this.updateDocumentStatus(documentId, DocumentStatus.PROCESSING);
     await job.updateProgress(10);
 
     try {
@@ -78,14 +79,14 @@ export class IngestionProcessor extends WorkerHost {
       await this.prisma.document.update({
         where: { id: documentId },
         data: {
-          status: 'COMPLETED',
+          status: DocumentStatus.COMPLETED,
           chunkCount: chunks.length,
         },
       });
 
       await this.prisma.ingestionJob.updateMany({
-        where: { documentId, status: 'PROCESSING' },
-        data: { status: 'COMPLETED', completedAt: new Date() },
+        where: { documentId, status: IngestionJobStatus.PROCESSING },
+        data: { status: IngestionJobStatus.COMPLETED, completedAt: new Date() },
       });
 
       await job.updateProgress(100);
@@ -96,7 +97,7 @@ export class IngestionProcessor extends WorkerHost {
       this.logger.error(`Failed processing document ${documentId}`, error);
       await this.updateDocumentStatus(
         documentId,
-        'FAILED',
+        DocumentStatus.FAILED,
         (error as Error).message,
       );
       throw error; // Re-throw so BullMQ handles retry
@@ -112,13 +113,17 @@ export class IngestionProcessor extends WorkerHost {
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job<IngestionJobData>) {
-    this.logger.log(`Job ${job.id} completed for document ${job.data.documentId}`);
+    this.logger.log(
+      `Job ${job.id} completed for document ${job.data.documentId}`,
+    );
   }
 
   private async parseToText(buffer: Buffer, mimeType: string): Promise<string> {
     if (mimeType === 'application/pdf') {
-      // Dynamic import to avoid ESM issues
-      const pdfParse = (await import('pdf-parse')).default;
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require('pdf-parse') as (
+        buffer: Buffer,
+      ) => Promise<{ text: string }>;
       const data = await pdfParse(buffer);
       return data.text;
     }
@@ -150,7 +155,7 @@ export class IngestionProcessor extends WorkerHost {
 
   private async updateDocumentStatus(
     documentId: string,
-    status: string,
+    status: DocumentStatus,
     errorMessage?: string,
   ) {
     await this.prisma.document.update({

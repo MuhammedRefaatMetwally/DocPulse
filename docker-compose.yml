@@ -1,18 +1,9 @@
 version: '3.9'
 
-services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - '6379:6379'
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  redis_data:
+# Redis is now handled by Upstash (free cloud Redis 7+)
+# Docker only needed if you want a local Redis fallback
+# services:
+#   redis:
+#     image: redis:7-alpine
+#     ports:
+#       - '6379:6379'

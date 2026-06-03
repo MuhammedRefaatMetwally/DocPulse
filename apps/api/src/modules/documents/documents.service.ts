@@ -9,7 +9,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '@/database/prisma.service';
 import { StorageService } from '@/modules/storage/storage.service';
 import { INGESTION_QUEUE } from '@/modules/ingestion/ingestion.constants';
-import { IngestionJobData } from '@/modules/ingestion/ingestion.processor';
+import { IngestionJobData } from '../ingestion/ingestion.processor';
 
 @Injectable()
 export class DocumentsService {

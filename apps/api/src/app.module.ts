@@ -13,11 +13,22 @@ import { BullModule } from '@nestjs/bullmq';
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          url: config.getOrThrow<string>('REDIS_URL'),
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.getOrThrow<string>('REDIS_URL');
+        const url = new URL(redisUrl);
+
+        return {
+          connection: {
+            host: url.hostname,
+            port: Number(url.port),
+            password: url.password,
+            // TLS required for Upstash (rediss://) — empty object enables it
+            tls: redisUrl.startsWith('rediss://') ? {} : undefined,
+            maxRetriesPerRequest: null,
+            enableReadyCheck: false,
+          },
+        };
+      },
     }),
     PrismaModule,
     AuthModule,

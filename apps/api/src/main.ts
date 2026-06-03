@@ -33,10 +33,21 @@ async function bootstrap() {
     .setVersion('1.0')
     .addBearerAuth()
     .build();
-  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
+  SwaggerModule.setup(
+    'api/docs',
+    app,
+    SwaggerModule.createDocument(app, config),
+  );
 
-  // Bull Board — queue monitoring (dev only)
   if (process.env.NODE_ENV !== 'production') {
+    const { createBullBoard } = await import('@bull-board/api');
+    const { BullMQAdapter } = await import('@bull-board/api/bullMQAdapter');
+    const { ExpressAdapter } = await import('@bull-board/express');
+    const { Queue } = await import('bullmq');
+
+    const redisUrl = process.env.REDIS_URL!;
+    const url = new URL(redisUrl);
+
     const serverAdapter = new ExpressAdapter();
     serverAdapter.setBasePath('/api/queues');
 
@@ -44,7 +55,14 @@ async function bootstrap() {
       queues: [
         new BullMQAdapter(
           new Queue('ingestion', {
-            connection: { url: process.env.REDIS_URL },
+            connection: {
+              host: url.hostname,
+              port: Number(url.port),
+              password: url.password,
+              tls: redisUrl.startsWith('rediss://') ? {} : undefined,
+              maxRetriesPerRequest: null,
+              enableReadyCheck: false,
+            },
           }),
         ),
       ],
