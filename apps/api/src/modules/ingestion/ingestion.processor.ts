@@ -3,8 +3,9 @@ import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '@/database/prisma.service';
 import { StorageService } from '@/modules/storage/storage.service';
-import { INGESTION_QUEUE } from './ingestion.constants';
+import { EmbeddingsService } from '@/modules/embeddings/embeddings.service';
 import { DocumentStatus, IngestionJobStatus } from '@/generated/prisma/client';
+import { INGESTION_QUEUE } from './ingestion.constants';
 
 export interface IngestionJobData {
   documentId: string;
@@ -25,6 +26,7 @@ export class IngestionProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly embeddings: EmbeddingsService,
   ) {
     super();
   }
@@ -44,34 +46,60 @@ export class IngestionProcessor extends WorkerHost {
 
       // 2. Read file from storage
       const fileBuffer = await this.storage.get(document.storageKey);
-      await job.updateProgress(25);
+      await job.updateProgress(20);
 
       // 3. Parse to text
       const text = await this.parseToText(fileBuffer, document.mimeType);
-      await job.updateProgress(40);
+      await job.updateProgress(35);
 
       // 4. Chunk text
       const chunks = this.chunkText(text, 512, 64);
-      await job.updateProgress(55);
+      await job.updateProgress(45);
+
+      if (chunks.length === 0) {
+        throw new Error('No text content extracted from document');
+      }
 
       // 5. Delete old chunks (supports re-ingestion)
       await this.prisma.documentChunk.deleteMany({ where: { documentId } });
 
-      // 6. Store chunks in batches
+      // 6. Embed + store in batches
       const BATCH_SIZE = 50;
+
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE);
-        await this.prisma.documentChunk.createMany({
-          data: batch.map((chunk) => ({
-            documentId,
-            workspaceId,
-            content: chunk.content,
-            chunkIndex: chunk.chunkIndex,
-            startChar: chunk.startChar,
-            endChar: chunk.endChar,
-          })),
-        });
-        const progress = 55 + Math.round((i / chunks.length) * 40);
+
+        // Get embeddings for this batch
+        const vectors = await this.embeddings.embedBatch(
+          batch.map((c) => c.content),
+        );
+
+        // Insert each chunk with its embedding using raw SQL
+        // Prisma doesn't support vector type natively
+        for (let j = 0; j < batch.length; j++) {
+          const chunk = batch[j];
+          // Format vector as PostgreSQL array string
+          const vectorString = `[${vectors[j].join(',')}]`;
+
+          await this.prisma.$executeRaw`
+            INSERT INTO document_chunks
+              (id, document_id, workspace_id, content, chunk_index,
+               start_char, end_char, embedding, created_at)
+            VALUES (
+              gen_random_uuid(),
+              ${documentId},
+              ${workspaceId},
+              ${chunk.content},
+              ${chunk.chunkIndex},
+              ${chunk.startChar},
+              ${chunk.endChar},
+              ${vectorString}::vector,
+              NOW()
+            )
+          `;
+        }
+
+        const progress = 45 + Math.round(((i + batch.length) / chunks.length) * 45);
         await job.updateProgress(progress);
       }
 
@@ -85,13 +113,16 @@ export class IngestionProcessor extends WorkerHost {
       });
 
       await this.prisma.ingestionJob.updateMany({
-        where: { documentId, status: IngestionJobStatus.PROCESSING },
-        data: { status: IngestionJobStatus.COMPLETED, completedAt: new Date() },
+        where: { documentId, status: IngestionJobStatus.QUEUED },
+        data: {
+          status: IngestionJobStatus.COMPLETED,
+          completedAt: new Date(),
+        },
       });
 
       await job.updateProgress(100);
       this.logger.log(
-        `Document ${documentId} completed — ${chunks.length} chunks`,
+        `Document ${documentId} completed — ${chunks.length} chunks embedded`,
       );
     } catch (error) {
       this.logger.error(`Failed processing document ${documentId}`, error);
@@ -100,7 +131,7 @@ export class IngestionProcessor extends WorkerHost {
         DocumentStatus.FAILED,
         (error as Error).message,
       );
-      throw error; // Re-throw so BullMQ handles retry
+      throw error;
     }
   }
 
@@ -136,6 +167,8 @@ export class IngestionProcessor extends WorkerHost {
     overlap: number,
   ): TextChunk[] {
     const clean = text.replace(/\s+/g, ' ').trim();
+    if (!clean) return [];
+
     const chunks: TextChunk[] = [];
     const step = chunkSize - overlap;
 
