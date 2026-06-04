@@ -11,6 +11,7 @@ export class EmbeddingsService {
   private readonly EMBEDDING_DIMENSIONS = 1536;
 
   constructor(private readonly config: ConfigService) {
+    //Gemini
     this.openai = new OpenAI({
       apiKey: this.config.getOrThrow<string>('GEMINI_API_KEY'),
       // Official Gemini OpenAI-compatible endpoint from docs
