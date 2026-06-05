@@ -1,22 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
+import { GEMINI_CLIENT } from './embeddings.constants';
 
 @Injectable()
 export class EmbeddingsService {
   private readonly logger = new Logger(EmbeddingsService.name);
-  private readonly openai: OpenAI;
   private readonly model: string;
+  private readonly DIMENSIONS = 1536;
 
-  private readonly EMBEDDING_DIMENSIONS = 1536;
-
-  constructor(private readonly config: ConfigService) {
-    //Gemini
-    this.openai = new OpenAI({
-      apiKey: this.config.getOrThrow<string>('GEMINI_API_KEY'),
-      // Official Gemini OpenAI-compatible endpoint from docs
-      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    });
+  constructor(
+    @Inject(GEMINI_CLIENT) private readonly ai: GoogleGenAI,
+    private readonly config: ConfigService,
+  ) {
     this.model = this.config.get<string>(
       'OPENAI_EMBEDDING_MODEL',
       'gemini-embedding-001',
@@ -31,35 +27,45 @@ export class EmbeddingsService {
   async embedBatch(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    // Clean texts — newlines degrade embedding quality
     const cleaned = texts.map((t) => t.replace(/\n/g, ' ').trim());
-
-    const BATCH_SIZE = 100;
+    const BATCH_SIZE = 20;
     const results: number[][] = [];
 
     for (let i = 0; i < cleaned.length; i += BATCH_SIZE) {
       const batch = cleaned.slice(i, i + BATCH_SIZE);
 
       this.logger.debug(
-        `Embedding batch ${i / BATCH_SIZE + 1} — ${batch.length} texts`,
+        `Embedding batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(cleaned.length / BATCH_SIZE)} — ${batch.length} texts`,
       );
 
-      const response = await this.openai.embeddings.create({
+      const response = await this.ai.models.embedContent({
         model: this.model,
-        input: batch,
-        // CRITICAL: gemini-embedding-001 defaults to 3072 dims
-        // We pin to 1536 to match our pgvector column vector(1536)
-        // MRL guarantees same quality at 1536 as 3072
-        dimensions: this.EMBEDDING_DIMENSIONS,
+        contents: batch,
+        config: {
+          taskType: 'RETRIEVAL_DOCUMENT',
+          outputDimensionality: this.DIMENSIONS,
+        },
       });
 
-      const vectors = response.data
-        .sort((a, b) => a.index - b.index)
-        .map((item) => item.embedding);
-
+      const vectors = response.embeddings!.map((e) => e.values as number[]);
       results.push(...vectors);
     }
 
     return results;
+  }
+
+  async embedQuery(query: string): Promise<number[]> {
+    const cleaned = query.replace(/\n/g, ' ').trim();
+
+    const response = await this.ai.models.embedContent({
+      model: this.model,
+      contents: [cleaned],
+      config: {
+        taskType: 'RETRIEVAL_QUERY',
+        outputDimensionality: this.DIMENSIONS,
+      },
+    });
+
+    return response.embeddings![0].values as number[];
   }
 }

@@ -99,7 +99,8 @@ export class IngestionProcessor extends WorkerHost {
           `;
         }
 
-        const progress = 45 + Math.round(((i + batch.length) / chunks.length) * 45);
+        const progress =
+          45 + Math.round(((i + batch.length) / chunks.length) * 45);
         await job.updateProgress(progress);
       }
 
@@ -114,10 +115,7 @@ export class IngestionProcessor extends WorkerHost {
 
       await this.prisma.ingestionJob.updateMany({
         where: { documentId, status: IngestionJobStatus.QUEUED },
-        data: {
-          status: IngestionJobStatus.COMPLETED,
-          completedAt: new Date(),
-        },
+        data: { status: IngestionJobStatus.PROCESSING, startedAt: new Date() },
       });
 
       await job.updateProgress(100);

@@ -1,25 +1,28 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-
-const mockCreate = vi.fn();
-
-vi.mock('openai', () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      embeddings: {
-        create: mockCreate,
-      },
-    })),
-  };
-});
-
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { EmbeddingsService } from './embeddings.service';
+import { GEMINI_CLIENT } from './embeddings.constants';
+
+// Mock the Gemini client object directly — no constructor needed
+const mockEmbedContent = vi.fn();
+
+const mockGeminiClient = {
+  models: {
+    embedContent: mockEmbedContent,
+  },
+};
 
 const mockConfig = {
-  getOrThrow: vi.fn().mockReturnValue('sk-test'),
-  get: vi.fn().mockReturnValue('text-embedding-3-small'),
+  getOrThrow: vi.fn().mockReturnValue('fake-gemini-key'),
+  get: vi.fn().mockReturnValue('gemini-embedding-001'),
 };
+
+const makeEmbeddingResponse = (count: number) => ({
+  embeddings: Array.from({ length: count }, () => ({
+    values: Array(1536).fill(0.1),
+  })),
+});
 
 describe('EmbeddingsService', () => {
   let service: EmbeddingsService;
@@ -28,6 +31,7 @@ describe('EmbeddingsService', () => {
     const module = await Test.createTestingModule({
       providers: [
         EmbeddingsService,
+        { provide: GEMINI_CLIENT, useValue: mockGeminiClient },
         { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();
@@ -40,82 +44,76 @@ describe('EmbeddingsService', () => {
     it('should return empty array for empty input', async () => {
       const result = await service.embedBatch([]);
       expect(result).toEqual([]);
-      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmbedContent).not.toHaveBeenCalled();
     });
 
-    it('should call OpenAI and return vectors in order', async () => {
-      const fakeVectors = [
-        Array(1536).fill(0.1),
-        Array(1536).fill(0.2),
-      ];
-
-      mockCreate.mockResolvedValue({
-        data: [
-          { index: 0, embedding: fakeVectors[0] },
-          { index: 1, embedding: fakeVectors[1] },
-        ],
-      });
+    it('should call Gemini and return vectors', async () => {
+      mockEmbedContent.mockResolvedValue(makeEmbeddingResponse(2));
 
       const result = await service.embedBatch(['hello', 'world']);
 
-      expect(mockCreate).toHaveBeenCalledOnce();
-      expect(mockCreate).toHaveBeenCalledWith({
-        model: 'text-embedding-3-small',
-        input: ['hello', 'world'],
-        encoding_format: 'float',
+      expect(mockEmbedContent).toHaveBeenCalledOnce();
+      expect(mockEmbedContent).toHaveBeenCalledWith({
+        model: 'gemini-embedding-001',
+        contents: ['hello', 'world'],
+        config: {
+          taskType: 'RETRIEVAL_DOCUMENT',
+          outputDimensionality: 1536,
+        },
       });
       expect(result).toHaveLength(2);
       expect(result[0]).toHaveLength(1536);
     });
 
     it('should clean newlines from text before embedding', async () => {
-      mockCreate.mockResolvedValue({
-        data: [{ index: 0, embedding: Array(1536).fill(0.1) }],
-      });
+      mockEmbedContent.mockResolvedValue(makeEmbeddingResponse(1));
 
       await service.embedBatch(['hello\nworld']);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      expect(callArgs.input[0]).toBe('hello world');
+      const callArgs = mockEmbedContent.mock.calls[0][0];
+      expect(callArgs.contents[0]).toBe('hello world');
     });
 
-    it('should process large batches in chunks of 100', async () => {
-      const texts = Array(150).fill('test text');
-      mockCreate.mockResolvedValue({
-        data: Array(100)
-          .fill(null)
-          .map((_, i) => ({ index: i, embedding: Array(1536).fill(0.1) })),
-      });
+    it('should process large batches in chunks of 20', async () => {
+      const texts = Array(45).fill('test text');
 
-      // Second batch returns 50
-      mockCreate.mockResolvedValueOnce({
-        data: Array(100)
-          .fill(null)
-          .map((_, i) => ({ index: i, embedding: Array(1536).fill(0.1) })),
-      });
-      mockCreate.mockResolvedValueOnce({
-        data: Array(50)
-          .fill(null)
-          .map((_, i) => ({ index: i, embedding: Array(1536).fill(0.1) })),
-      });
+      mockEmbedContent
+        .mockResolvedValueOnce(makeEmbeddingResponse(20))
+        .mockResolvedValueOnce(makeEmbeddingResponse(20))
+        .mockResolvedValueOnce(makeEmbeddingResponse(5));
 
       const result = await service.embedBatch(texts);
 
-      expect(mockCreate).toHaveBeenCalledTimes(2);
-      expect(result).toHaveLength(150);
+      expect(mockEmbedContent).toHaveBeenCalledTimes(3);
+      expect(result).toHaveLength(45);
     });
   });
 
   describe('embedOne', () => {
     it('should return a single vector', async () => {
-      mockCreate.mockResolvedValue({
-        data: [{ index: 0, embedding: Array(1536).fill(0.5) }],
-      });
+      mockEmbedContent.mockResolvedValue(makeEmbeddingResponse(1));
 
       const result = await service.embedOne('test');
 
       expect(result).toHaveLength(1536);
-      expect(mockCreate).toHaveBeenCalledOnce();
+      expect(mockEmbedContent).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('embedQuery', () => {
+    it('should use RETRIEVAL_QUERY task type', async () => {
+      mockEmbedContent.mockResolvedValue(makeEmbeddingResponse(1));
+
+      await service.embedQuery('what is machine learning?');
+
+      expect(mockEmbedContent).toHaveBeenCalledWith({
+        model: 'gemini-embedding-001',
+        contents: ['what is machine learning?'],
+        config: {
+          taskType: 'RETRIEVAL_QUERY',
+          outputDimensionality: 1536,
+        },
+      });
     });
   });
 });
