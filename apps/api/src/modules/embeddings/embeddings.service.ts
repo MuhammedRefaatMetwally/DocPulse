@@ -14,7 +14,7 @@ export class EmbeddingsService {
     private readonly config: ConfigService,
   ) {
     this.model = this.config.get<string>(
-      'OPENAI_EMBEDDING_MODEL',
+      'EMBEDDING_MODEL',
       'gemini-embedding-001',
     );
   }
