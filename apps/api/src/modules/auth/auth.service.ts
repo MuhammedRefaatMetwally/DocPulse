@@ -60,17 +60,17 @@ export class AuthService {
   }
 
   async refresh(userId: string, email: string, rawRefreshToken: string) {
-    const tokenHash = createHash('sha256')
-      .update(rawRefreshToken)
-      .digest('hex');
+  const tokenHash = createHash('sha256')
+    .update(rawRefreshToken)
+    .digest('hex');
 
-    await this.prisma.refreshToken.updateMany({
-      where: { token: tokenHash },
-      data: { revoked: true },
-    });
+  await this.prisma.refreshToken.updateMany({
+    where: { token: tokenHash },
+    data: { revoked: true },
+  });
 
-    return this.issueTokens(userId, email);
-  }
+  return this.issueTokens(userId, email);
+}
 
   async logout(userId: string) {
     await this.prisma.refreshToken.updateMany({

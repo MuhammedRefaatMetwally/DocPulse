@@ -52,17 +52,16 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
-  @Post('refresh')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtRefreshGuard)
-  @ApiOperation({ summary: 'Rotate refresh token and get new access token' })
-  refresh(
-    @CurrentUser() user: CurrentUserPayload & { refreshToken: string },
-    @Body() _dto: RefreshDto,
-  ) {
-    return this.authService.refresh(user.sub, user.email, user.refreshToken);
-  }
-
+ @Post('refresh')
+@HttpCode(HttpStatus.OK)
+@UseGuards(JwtRefreshGuard)
+@ApiOperation({ summary: 'Rotate refresh token and get new access token' })
+refresh(
+  @CurrentUser() user: CurrentUserPayload & { refreshToken: string },
+  @Body() _dto: RefreshDto, 
+) {
+  return this.authService.refresh(user.sub, user.email, user.refreshToken);
+}
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)

@@ -18,7 +18,7 @@ import { INGESTION_QUEUE } from '@/modules/ingestion/ingestion.constants';
   providers: [
     DocumentsService,
     IngestionProcessor,
-    WorkspaceRoleGuard,
+    WorkspaceRoleGuard, 
   ],
 })
 export class DocumentsModule {}
