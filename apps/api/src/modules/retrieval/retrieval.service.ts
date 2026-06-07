@@ -11,7 +11,6 @@ import { PrismaService } from '@/database/prisma.service';
 import { EmbeddingsService } from '@/modules/embeddings/embeddings.service';
 import { GEMINI_CLIENT } from '@/modules/embeddings/embeddings.constants';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface RetrievedChunk {
   chunkId: string;
@@ -63,8 +62,6 @@ export class RetrievalService {
       'gemini-2.0-flash',
     );
   }
-
-  // ── Public: streaming query ───────────────────────────────────────────────
 
   queryStream(
     workspaceId: string,

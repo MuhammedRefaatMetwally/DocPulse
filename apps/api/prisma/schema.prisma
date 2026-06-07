@@ -189,3 +189,79 @@ model QueryHistory {
   @@index([workspaceId])
   @@map("query_history")
 }
+
+// ─── Eval ────────────────────────────────────────────────
+
+model EvalDataset {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions EvalQuestion[]
+  runs      EvalRun[]
+
+  @@index([workspaceId])
+  @@map("eval_datasets")
+}
+
+model EvalQuestion {
+  id              String   @id @default(cuid())
+  datasetId       String
+  question        String
+  expectedAnswer  String
+  expectedDocumentIds String[] // doc IDs that should appear in sources
+  createdAt       DateTime @default(now())
+
+  dataset  EvalDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  results  EvalResult[]
+
+  @@index([datasetId])
+  @@map("eval_questions")
+}
+
+enum EvalRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model EvalRun {
+  id          String        @id @default(cuid())
+  workspaceId String
+  datasetId   String
+  status      EvalRunStatus @default(PENDING)
+  summary     Json?         // { hitRate, avgQuality, totalQuestions, avgLatencyMs }
+  startedAt   DateTime?
+  completedAt DateTime?
+  errorMessage String?
+  createdAt   DateTime      @default(now())
+
+  dataset  EvalDataset  @relation(fields: [datasetId], references: [id])
+  results  EvalResult[]
+
+  @@index([workspaceId])
+  @@index([datasetId])
+  @@map("eval_runs")
+}
+
+model EvalResult {
+  id             String  @id @default(cuid())
+  evalRunId      String
+  questionId     String
+  actualAnswer   String
+  expectedAnswer String
+  hitAtK         Boolean // was expected doc in top-K retrieved chunks?
+  qualityScore   Float   // 0.0 - 1.0 from LLM-as-judge
+  judgeReason    String  // why the judge gave this score
+  latencyMs      Int
+  createdAt      DateTime @default(now())
+
+  run      EvalRun      @relation(fields: [evalRunId], references: [id], onDelete: Cascade)
+  question EvalQuestion @relation(fields: [questionId], references: [id])
+
+  @@index([evalRunId])
+  @@map("eval_results")
+}
