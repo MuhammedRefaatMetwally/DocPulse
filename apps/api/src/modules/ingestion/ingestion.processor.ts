@@ -4,7 +4,7 @@ import { Logger } from '@nestjs/common';
 import { PrismaService } from '@/database/prisma.service';
 import { StorageService } from '@/modules/storage/storage.service';
 import { EmbeddingsService } from '@/modules/embeddings/embeddings.service';
-import { DocumentStatus, IngestionJobStatus, Prisma } from '@/generated/prisma/client';
+import { DocumentStatus, IngestionJobStatus } from '@/generated/prisma/client';
 import { INGESTION_QUEUE } from './ingestion.constants';
 
 export interface IngestionJobData {
@@ -24,9 +24,10 @@ interface TextChunk {
 // each worker gets 5 RPM budget. Batch of 20 texts = 1 API call per batch.
 const EMBED_BATCH_SIZE = 20;
 
-// INSERT_BATCH: 50 rows × ~8 SQL params = 400 params per query.
-// PostgreSQL max is 65535. 50 is safe and gives good bulk insert performance.
-const INSERT_BATCH_SIZE = 50;
+// INSERT_BATCH: 100 rows per UNNEST query.
+// Each query is O(1) round-trips regardless of row count.
+// 100 keeps us well under PostgreSQL's 65535 parameter limit.
+const INSERT_BATCH_SIZE = 100;
 
 // Worker concurrency: 3 keeps us within Gemini free tier limits.
 // Increase to 5 if you upgrade to a paid Gemini tier.
@@ -75,7 +76,6 @@ export class IngestionProcessor extends WorkerHost {
       });
 
       if (!document) {
-        // No point retrying — document was deleted from DB
         throw new UnrecoverableError(
           `Document ${documentId} not found in database`,
         );
@@ -86,7 +86,6 @@ export class IngestionProcessor extends WorkerHost {
       try {
         fileBuffer = await this.storage.get(document.storageKey);
       } catch {
-        // No point retrying — file was deleted from storage
         throw new UnrecoverableError(
           `Storage file not found: ${document.storageKey}`,
         );
@@ -111,49 +110,78 @@ export class IngestionProcessor extends WorkerHost {
       );
       await job.updateProgress(45);
 
-      // ── 5. Delete stale chunks + stream embed+insert in rolling batches ──
-      // TRANSACTION SAFETY:
-      // We wrap deleteMany + all inserts in a single $transaction so that
-      // either all chunks are replaced or none are — no partial state.
-      //
-      // MEMORY SAFETY:
-      // We do NOT collect all vectors upfront. Instead we embed a batch,
-      // immediately build the insert rows, and pass them to the transaction.
-      // Max memory held = EMBED_BATCH_SIZE vectors at once (~2MB for 1536-dim).
-      //
-      // We build all insert operations FIRST (as Prisma raw SQL fragments),
-      // then execute the entire delete+insert as one atomic transaction.
+      // ── 5. Embed all chunks in rolling batches ───────────────────────────
+      // Memory-efficient: one EMBED_BATCH_SIZE batch held at a time (~2MB).
+      // All vectors collected before touching the DB so no partial writes
+      // occur if embedding fails midway.
+      const allChunks: TextChunk[] = [];
+      const allVectors: number[][] = [];
 
-      const allInsertRows = await this.buildAllInsertRows(
-        chunks,
-        documentId,
-        workspaceId,
-        job,
-      );
+      for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
+        const batchChunks = chunks.slice(i, i + EMBED_BATCH_SIZE);
+        const vectors = await this.embeddings.embedBatch(
+          batchChunks.map((c) => c.content),
+        );
+
+        allChunks.push(...batchChunks);
+        allVectors.push(...vectors);
+
+        const progress =
+          45 + Math.round(((i + batchChunks.length) / chunks.length) * 45);
+        await job.updateProgress(progress);
+      }
 
       await job.updateProgress(90);
 
-      // ── 6. Atomic delete + bulk insert in one transaction ────────────────
-      // Split inserts into batches to avoid hitting PostgreSQL's 65535
-      // parameter limit, but all batches execute inside ONE transaction.
+      // ── 6. Atomic delete + UNNEST bulk insert in one transaction ──────────
+      // deleteMany + all inserts are wrapped in ONE transaction:
+      // either all chunks are replaced or none are — no partial state.
+      //
+      // UNNEST zips parallel typed arrays server-side into rows.
+      // ONE query per INSERT_BATCH_SIZE chunks instead of one per chunk.
+      // Complexity: O(n queries) → O(1 per batch of 100).
       await this.prisma.$transaction(async (tx) => {
-        // Delete all existing chunks for this document
+        // Delete all existing chunks for this document (re-ingestion safe)
         await tx.documentChunk.deleteMany({ where: { documentId } });
 
-        // Insert all new chunks in batches
-        for (let i = 0; i < allInsertRows.length; i += INSERT_BATCH_SIZE) {
-          const batch = allInsertRows.slice(i, i + INSERT_BATCH_SIZE);
+        for (let i = 0; i < allChunks.length; i += INSERT_BATCH_SIZE) {
+          const batchChunks = allChunks.slice(i, i + INSERT_BATCH_SIZE);
+          const batchVectors = allVectors.slice(i, i + INSERT_BATCH_SIZE);
 
-          // TRUE bulk insert — one INSERT with N VALUE rows per batch
-          // Uses Prisma.sql + Prisma.join for safe parameterized bulk insert
-          const query = Prisma.sql`
+          // Build typed parallel arrays — PostgreSQL zips via UNNEST
+          const contents     = batchChunks.map((c) => c.content);
+          const chunkIndexes = batchChunks.map((c) => c.chunkIndex);
+          const startChars   = batchChunks.map((c) => c.startChar);
+          const endChars     = batchChunks.map((c) => c.endChar);
+
+          // JSON.stringify handles -0 edge case and is faster than .join(',')
+          // PostgreSQL vector type accepts '[x,y,z]' string format natively
+          const vectorStrings = batchVectors.map((v) => JSON.stringify(v));
+
+          // Single INSERT for entire batch — UNNEST unzips arrays into rows
+          // ONE round-trip per INSERT_BATCH_SIZE chunks
+          await tx.$executeRaw`
             INSERT INTO document_chunks
               (id, document_id, workspace_id, content, chunk_index,
                start_char, end_char, embedding, created_at)
-            VALUES ${Prisma.join(batch)}
+            SELECT
+              gen_random_uuid(),
+              ${documentId},
+              ${workspaceId},
+              t.content,
+              t.chunk_index,
+              t.start_char,
+              t.end_char,
+              t.embedding::vector,
+              NOW()
+            FROM UNNEST(
+              ${contents}::text[],
+              ${chunkIndexes}::int[],
+              ${startChars}::int[],
+              ${endChars}::int[],
+              ${vectorStrings}::text[]
+            ) AS t(content, chunk_index, start_char, end_char, embedding)
           `;
-
-          await tx.$executeRaw(query);
         }
       });
 
@@ -184,63 +212,8 @@ export class IngestionProcessor extends WorkerHost {
       );
     } catch (error) {
       await this.handleFailure(job, documentId, error as Error);
-      throw error; // Re-throw so BullMQ handles retry scheduling
+      throw error;
     }
-  }
-
-  /**
-   * Embeds all chunks in rolling batches and builds Prisma.sql row fragments.
-   * Memory-efficient: only one embed batch (20 chunks × 1536 floats) is held
-   * in memory at any time. Returns an array of Prisma.Sql fragments ready
-   * for Prisma.join() in the bulk INSERT.
-   */
-  private async buildAllInsertRows(
-    chunks: TextChunk[],
-    documentId: string,
-    workspaceId: string,
-    job: Job,
-  ): Promise<Prisma.Sql[]> {
-    const rows: Prisma.Sql[] = [];
-
-    for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
-      const batchChunks = chunks.slice(i, i + EMBED_BATCH_SIZE);
-
-      // Embed this batch — frees previous batch from memory automatically
-      const vectors = await this.embeddings.embedBatch(
-        batchChunks.map((c) => c.content),
-      );
-
-      // Build one Prisma.sql row per chunk
-      for (let j = 0; j < batchChunks.length; j++) {
-        const chunk = batchChunks[j];
-
-        // JSON.stringify is faster than join() for large arrays
-        // and handles edge cases like -0 correctly
-        // PostgreSQL vector type accepts '[0.1,0.2,...]' format natively
-        const vectorString = JSON.stringify(vectors[j]);
-
-        rows.push(
-          Prisma.sql`(
-            gen_random_uuid(),
-            ${documentId},
-            ${workspaceId},
-            ${chunk.content},
-            ${chunk.chunkIndex},
-            ${chunk.startChar},
-            ${chunk.endChar},
-            ${vectorString}::vector,
-            NOW()
-          )`,
-        );
-      }
-
-      // Update progress: 45% to 90% across embedding phase
-      const progress =
-        45 + Math.round(((i + batchChunks.length) / chunks.length) * 45);
-      await job.updateProgress(progress);
-    }
-
-    return rows;
   }
 
   /**
@@ -253,7 +226,6 @@ export class IngestionProcessor extends WorkerHost {
     documentId: string,
     error: Error,
   ): Promise<void> {
-    const { documentId: _ } = job.data;
     const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
     const isUnrecoverable = error instanceof UnrecoverableError;
 
