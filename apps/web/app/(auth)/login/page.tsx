@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -16,8 +16,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { api } from '@/lib/api';
+import { Skeleton } from '@/components/ui/skeleton';
+import { api, setAuthTokens } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
+import { getSafeRedirectPath } from '@/lib/redirect';
 import { AuthTokens, User } from '@/types';
 import { AxiosError } from 'axios';
 
@@ -26,10 +28,15 @@ interface LoginForm {
   password: string;
 }
 
-export default function LoginPage() {
+// ── Inner component uses useSearchParams — must be inside Suspense ────────────
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const setUser = useAuthStore((s) => s.setUser);
   const [loading, setLoading] = useState(false);
+
+  const from = searchParams.get('from');
+  const redirectTo = getSafeRedirectPath(from, '/dashboard');
 
   const {
     register,
@@ -40,22 +47,16 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setLoading(true);
     try {
-      // 1. Login and get tokens
       const { data: tokens } = await api.post<AuthTokens>('/auth/login', data);
 
-      // 2. Store tokens
-      localStorage.setItem('access_token', tokens.accessToken);
-      localStorage.setItem('refresh_token', tokens.refreshToken);
+      setAuthTokens(tokens.accessToken, tokens.refreshToken);
 
-      // 3. Set cookie for middleware (expires in 15 minutes)
-      document.cookie = `access_token=${tokens.accessToken}; path=/; max-age=900; SameSite=Lax`;
-
-      // 4. Fetch user profile
       const { data: user } = await api.get<User>('/auth/me');
       setUser(user);
 
       toast.success(`Welcome back, ${user.name}`);
-      router.push('/dashboard');
+
+      router.push(redirectTo);
     } catch (err) {
       const error = err as AxiosError<{ message: string }>;
       toast.error(error.response?.data?.message ?? 'Login failed');
@@ -78,10 +79,13 @@ export default function LoginPage() {
               id="email"
               type="email"
               placeholder="you@example.com"
+              autoComplete="email"
               {...register('email', { required: 'Email is required' })}
             />
             {errors.email && (
-              <p className="text-sm text-destructive">{errors.email.message}</p>
+              <p className="text-sm text-destructive">
+                {errors.email.message}
+              </p>
             )}
           </div>
           <div className="space-y-2">
@@ -90,6 +94,7 @@ export default function LoginPage() {
               id="password"
               type="password"
               placeholder="••••••••"
+              autoComplete="current-password"
               {...register('password', { required: 'Password is required' })}
             />
             {errors.password && (
@@ -112,5 +117,31 @@ export default function LoginPage() {
         </CardFooter>
       </form>
     </Card>
+  );
+}
+
+function LoginSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-4 w-56 mt-2" />
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </CardContent>
+      <CardFooter>
+        <Skeleton className="h-10 w-full" />
+      </CardFooter>
+    </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginSkeleton />}>
+      <LoginForm />
+    </Suspense>
   );
 }

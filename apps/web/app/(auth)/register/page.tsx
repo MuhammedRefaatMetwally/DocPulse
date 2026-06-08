@@ -16,7 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { api } from '@/lib/api';
+import { api, setAuthTokens } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { AuthTokens, User } from '@/types';
 import { AxiosError } from 'axios';
@@ -46,9 +46,7 @@ export default function RegisterPage() {
         data,
       );
 
-      localStorage.setItem('access_token', tokens.accessToken);
-      localStorage.setItem('refresh_token', tokens.refreshToken);
-      document.cookie = `access_token=${tokens.accessToken}; path=/; max-age=900; SameSite=Lax`;
+      setAuthTokens(tokens.accessToken, tokens.refreshToken);
 
       const { data: user } = await api.get<User>('/auth/me');
       setUser(user);
@@ -67,9 +65,7 @@ export default function RegisterPage() {
     <Card>
       <CardHeader>
         <CardTitle className="text-2xl">Create account</CardTitle>
-        <CardDescription>
-          Start using DocPulse for free
-        </CardDescription>
+        <CardDescription>Start using DocPulse for free</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
         <CardContent className="space-y-4">

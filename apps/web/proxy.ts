@@ -10,12 +10,15 @@ export function proxy(request: NextRequest) {
     pathname.startsWith(path),
   );
 
-  // Check for access token in cookies (set by our auth flow) cuz middleware can't access localStorage
   const token = request.cookies.get('access_token')?.value;
 
   if (!token && !isPublicPath) {
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
+
+    
+    const fullPath = request.nextUrl.pathname + request.nextUrl.search;
+    loginUrl.searchParams.set('from', fullPath);
+
     return NextResponse.redirect(loginUrl);
   }
 

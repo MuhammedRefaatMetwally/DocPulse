@@ -24,7 +24,7 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { handleLogout } = useAuth();
+  const { logout } = useAuth();
   const user = useAuthStore((s) => s.user);
 
   return (
@@ -79,7 +79,7 @@ export function Sidebar() {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-muted-foreground hover:text-destructive"
-          onClick={handleLogout}
+          onClick={logout}
         >
           <LogOut size={16} className="mr-2" />
           Sign out
