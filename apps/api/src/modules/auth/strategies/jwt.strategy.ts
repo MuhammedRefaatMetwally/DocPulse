@@ -1,13 +1,19 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
+import { Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import { UsersService } from 'src/modules/users/users.service';
+import { UsersService } from '@/modules/users/users.service';
+import { Request } from 'express';
 
 export interface JwtPayload {
   sub: string;
   email: string;
 }
+
+// Extract JWT from httpOnly cookie instead of Authorization header
+const cookieExtractor = (req: Request): string | null => {
+  return req?.cookies?.access_token ?? null;
+};
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -16,7 +22,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly usersService: UsersService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Try cookie first, fall back to Bearer header for Swagger/API clients
+      jwtFromRequest: (req: Request) => {
+        return cookieExtractor(req) ?? extractBearerToken(req);
+      },
       ignoreExpiration: false,
       secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
     });
@@ -27,4 +36,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!user) throw new UnauthorizedException('User no longer exists');
     return { sub: payload.sub, email: payload.email };
   }
+}
+
+// Fallback extractor for Swagger and direct API clients
+function extractBearerToken(req: Request): string | null {
+  const auth = req?.headers?.authorization;
+  if (auth?.startsWith('Bearer ')) return auth.slice(7);
+  return null;
 }

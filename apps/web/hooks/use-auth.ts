@@ -7,39 +7,33 @@ import { api } from '@/lib/api';
 import { User } from '@/types';
 
 export function useAuth() {
-  const { user, isAuthenticated, isLoading, setUser, setLoading, logout } =
+  const { user, isAuthenticated, isLoading, setUser, setLoading, clearUser } =
     useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
     if (user) return;
 
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
     api
       .get<User>('/auth/me')
       .then((res) => setUser(res.data))
       .catch(() => {
-        logout();
+        clearUser();
         setLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleLogout = useCallback(async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout');
     } catch {
-      // proceed regardless — backend failure shouldn't block logout
+      // proceed regardless
     } finally {
-      logout();
+      clearUser();
       router.push('/login');
     }
-  }, [logout, router]);
+  }, [clearUser, router]);
 
-  return { user, isAuthenticated, isLoading, logout: handleLogout };
+  return { user, isAuthenticated, isLoading, logout };
 }

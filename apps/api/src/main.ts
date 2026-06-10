@@ -1,10 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ExpressAdapter } from '@bull-board/express';
-import { createBullBoard } from '@bull-board/api';
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import { Queue } from 'bullmq';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const cookieParser = require('cookie-parser');
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -14,19 +12,20 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
+  app.use(cookieParser());
+
   app.useGlobalPipes(
-  new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-    transformOptions: {
-      enableImplicitConversion: true, // auto-converts query string numbers
-    },
-  }),
-);
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
+
   app.enableCors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3001',
-    credentials: true,
+    credentials: true, 
   });
 
   const config = new DocumentBuilder()
@@ -34,12 +33,9 @@ async function bootstrap() {
     .setDescription('Multi-tenant RAG document intelligence platform')
     .setVersion('1.0')
     .addBearerAuth()
+    .addCookieAuth('refresh_token') // document cookie auth in Swagger
     .build();
-  SwaggerModule.setup(
-    'api/docs',
-    app,
-    SwaggerModule.createDocument(app, config),
-  );
+  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
 
   if (process.env.NODE_ENV !== 'production') {
     const { createBullBoard } = await import('@bull-board/api');
@@ -49,7 +45,6 @@ async function bootstrap() {
 
     const redisUrl = process.env.REDIS_URL!;
     const url = new URL(redisUrl);
-
     const serverAdapter = new ExpressAdapter();
     serverAdapter.setBasePath('/api/queues');
 

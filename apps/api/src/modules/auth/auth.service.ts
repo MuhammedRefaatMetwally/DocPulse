@@ -2,105 +2,121 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
-  Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '@/database/prisma.service';
+import { Response } from 'express';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { PrismaService } from '@/database/prisma.service';
+
+// Cookie options — centralised so they're consistent across all endpoints
+export const cookieOptions = (config: ConfigService) => ({
+  httpOnly: true,
+  secure: config.get('NODE_ENV') === 'production',
+  sameSite: 'lax' as const,
+  path: '/',
+});
 
 @Injectable()
-export class AuthService { 
+export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, res: Response) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-
-    if (existing) {
-      throw new ConflictException('Email already in use');
-    }
+    if (existing) throw new ConflictException('Email already in use');
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
-
     const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        name: dto.name,
-        passwordHash,
-      },
+      data: { email: dto.email, name: dto.name, passwordHash },
     });
 
-    return this.issueTokens(user.id, user.email);
+    await this.issueTokensAndSetCookies(user.id, user.email, res);
+
+    return {
+      user: { id: user.id, email: user.email, name: user.name },
+    };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, res: Response) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
+    if (!user) throw new UnauthorizedException('Invalid credentials');
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
 
-    const passwordMatch = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordMatch) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    await this.issueTokensAndSetCookies(user.id, user.email, res);
 
-    return this.issueTokens(user.id, user.email);
+    return {
+      user: { id: user.id, email: user.email, name: user.name },
+    };
   }
 
-  async refresh(userId: string, email: string, rawRefreshToken: string) {
-  const tokenHash = createHash('sha256')
-    .update(rawRefreshToken)
-    .digest('hex');
+  async refresh(userId: string, email: string, rawRefreshToken: string, res: Response) {
+    const tokenHash = createHash('sha256')
+      .update(rawRefreshToken)
+      .digest('hex');
 
-  await this.prisma.refreshToken.updateMany({
-    where: { token: tokenHash },
-    data: { revoked: true },
-  });
+    const stored = await this.prisma.refreshToken.findFirst({
+      where: { userId, token: tokenHash, revoked: false },
+    });
 
-  return this.issueTokens(userId, email);
-}
+    if (!stored || stored.expiresAt < new Date()) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
 
-  async logout(userId: string) {
+    // Rotate — revoke old token
+    await this.prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { revoked: true },
+    });
+
+    await this.issueTokensAndSetCookies(userId, email, res);
+
+    return { ok: true };
+  }
+
+  async logout(userId: string, res: Response) {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revoked: false },
       data: { revoked: true },
     });
+
+    res.clearCookie('access_token', cookieOptions(this.config));
+    res.clearCookie('refresh_token', cookieOptions(this.config));
+
     return { message: 'Logged out successfully' };
   }
 
   async getMe(userId: string) {
     return this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-      },
+      select: { id: true, email: true, name: true, createdAt: true },
     });
   }
 
-  private async issueTokens(userId: string, email: string) {
+  private async issueTokensAndSetCookies(
+    userId: string,
+    email: string,
+    res: Response,
+  ): Promise<void> {
     const payload = { sub: userId, email };
-
     const accessSecret = this.config.getOrThrow<string>('JWT_SECRET');
 
     const [accessToken, rawRefreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: accessSecret,
-        expiresIn: 900,
+        expiresIn: 900, // 15 minutes
       }),
       Promise.resolve(randomBytes(40).toString('hex')),
     ]);
@@ -117,9 +133,16 @@ export class AuthService {
       },
     });
 
-    return {
-      accessToken,
-      refreshToken: rawRefreshToken,
-    };
+    const base = cookieOptions(this.config);
+
+    res.cookie('access_token', accessToken, {
+      ...base,
+      maxAge: 900 * 1000, // 15 min in ms
+    });
+
+    res.cookie('refresh_token', rawRefreshToken, {
+      ...base,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+    });
   }
 }
