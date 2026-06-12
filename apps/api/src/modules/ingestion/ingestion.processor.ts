@@ -1,3 +1,4 @@
+const pdfParse = require('pdf-parse');
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, UnrecoverableError } from 'bullmq';
 import { Logger } from '@nestjs/common';
@@ -20,17 +21,8 @@ interface TextChunk {
 }
 
 // ── Tuning constants ───────────────────────────────────────────────────────
-// EMBED_BATCH: Gemini free tier = 15 RPM. With concurrency:3 workers,
-// each worker gets 5 RPM budget. Batch of 20 texts = 1 API call per batch.
 const EMBED_BATCH_SIZE = 20;
-
-// INSERT_BATCH: 100 rows per UNNEST query.
-// Each query is O(1) round-trips regardless of row count.
-// 100 keeps us well under PostgreSQL's 65535 parameter limit.
-const INSERT_BATCH_SIZE = 100;
-
-// Worker concurrency: 3 keeps us within Gemini free tier limits.
-// Increase to 5 if you upgrade to a paid Gemini tier.
+const INSERT_BATCH_SIZE = 100; // For createMany operations
 const WORKER_CONCURRENCY = 3;
 
 @Processor(INGESTION_QUEUE, { concurrency: WORKER_CONCURRENCY })
@@ -111,9 +103,6 @@ export class IngestionProcessor extends WorkerHost {
       await job.updateProgress(45);
 
       // ── 5. Embed all chunks in rolling batches ───────────────────────────
-      // Memory-efficient: one EMBED_BATCH_SIZE batch held at a time (~2MB).
-      // All vectors collected before touching the DB so no partial writes
-      // occur if embedding fails midway.
       const allChunks: TextChunk[] = [];
       const allVectors: number[][] = [];
 
@@ -133,55 +122,32 @@ export class IngestionProcessor extends WorkerHost {
 
       await job.updateProgress(90);
 
-      // ── 6. Atomic delete + UNNEST bulk insert in one transaction ──────────
-      // deleteMany + all inserts are wrapped in ONE transaction:
-      // either all chunks are replaced or none are — no partial state.
-      //
-      // UNNEST zips parallel typed arrays server-side into rows.
-      // ONE query per INSERT_BATCH_SIZE chunks instead of one per chunk.
-      // Complexity: O(n queries) → O(1 per batch of 100).
+      // ── 6. Atomic delete + bulk insert in one transaction ────────────────
       await this.prisma.$transaction(async (tx) => {
-        // Delete all existing chunks for this document (re-ingestion safe)
+        // Delete all existing chunks for this document
         await tx.documentChunk.deleteMany({ where: { documentId } });
 
-        for (let i = 0; i < allChunks.length; i += INSERT_BATCH_SIZE) {
-          const batchChunks = allChunks.slice(i, i + INSERT_BATCH_SIZE);
-          const batchVectors = allVectors.slice(i, i + INSERT_BATCH_SIZE);
+        // Prepare data for bulk insert
+        const chunkData = [];
+        for (let i = 0; i < allChunks.length; i++) {
+          chunkData.push({
+            documentId: documentId,
+            workspaceId: workspaceId,
+            content: allChunks[i].content,
+            chunkIndex: allChunks[i].chunkIndex,
+            startChar: allChunks[i].startChar,
+            endChar: allChunks[i].endChar,
+            embedding: allVectors[i] as any, // Type assertion for Unsupported type
+          });
+        }
 
-          // Build typed parallel arrays — PostgreSQL zips via UNNEST
-          const contents     = batchChunks.map((c) => c.content);
-          const chunkIndexes = batchChunks.map((c) => c.chunkIndex);
-          const startChars   = batchChunks.map((c) => c.startChar);
-          const endChars     = batchChunks.map((c) => c.endChar);
-
-          // JSON.stringify handles -0 edge case and is faster than .join(',')
-          // PostgreSQL vector type accepts '[x,y,z]' string format natively
-          const vectorStrings = batchVectors.map((v) => JSON.stringify(v));
-
-          // Single INSERT for entire batch — UNNEST unzips arrays into rows
-          // ONE round-trip per INSERT_BATCH_SIZE chunks
-          await tx.$executeRaw`
-            INSERT INTO document_chunks
-              (id, document_id, workspace_id, content, chunk_index,
-               start_char, end_char, embedding, created_at)
-            SELECT
-              gen_random_uuid(),
-              ${documentId},
-              ${workspaceId},
-              t.content,
-              t.chunk_index,
-              t.start_char,
-              t.end_char,
-              t.embedding::vector,
-              NOW()
-            FROM UNNEST(
-              ${contents}::text[],
-              ${chunkIndexes}::int[],
-              ${startChars}::int[],
-              ${endChars}::int[],
-              ${vectorStrings}::text[]
-            ) AS t(content, chunk_index, start_char, end_char, embedding)
-          `;
+        // Bulk insert in batches
+        for (let i = 0; i < chunkData.length; i += INSERT_BATCH_SIZE) {
+          const batch = chunkData.slice(i, i + INSERT_BATCH_SIZE);
+          await tx.documentChunk.createMany({
+            data: batch,
+            skipDuplicates: false,
+          });
         }
       });
 
@@ -217,9 +183,7 @@ export class IngestionProcessor extends WorkerHost {
   }
 
   /**
-   * Handles failure with correct status transitions:
-   * - Intermediate attempt: reset to QUEUED (BullMQ will retry)
-   * - Final attempt or UnrecoverableError: mark as FAILED permanently
+   * Handles failure with correct status transitions
    */
   private async handleFailure(
     job: Job<IngestionJobData>,
@@ -266,7 +230,6 @@ export class IngestionProcessor extends WorkerHost {
 
   @OnWorkerEvent('error')
   onError(error: Error): void {
-    // Required — without this, an unhandled error event crashes the worker
     this.logger.error('Worker connection/internal error:', error.message);
   }
 
@@ -297,12 +260,17 @@ export class IngestionProcessor extends WorkerHost {
 
   private async parseToText(buffer: Buffer, mimeType: string): Promise<string> {
     if (mimeType === 'application/pdf') {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse') as (
-        buffer: Buffer,
-      ) => Promise<{ text: string }>;
-      const data = await pdfParse(buffer);
-      return data.text;
+      try {
+        const pdfParse = require('pdf-parse');
+        const data = await pdfParse(buffer);
+        return data.text;
+      } catch (error) {
+        // Type narrowing for unknown error
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        this.logger.error(`PDF parsing failed: ${errorMessage}`);
+        throw new UnrecoverableError(`Failed to parse PDF: ${errorMessage}`);
+      }
     }
     return buffer.toString('utf-8');
   }

@@ -163,6 +163,7 @@ model DocumentChunk {
   chunkIndex  Int
   startChar   Int
   endChar     Int
+  embedding   Unsupported("vector")?  // Add this line for pgvector
   metadata    Json     @default("{}")
   createdAt   DateTime @default(now())
 

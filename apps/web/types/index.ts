@@ -25,3 +25,16 @@ export interface ApiError {
   message: string;
   statusCode: number;
 }
+
+export interface DocumentItem {
+  id: string;
+  name: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  chunkCount: number;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
