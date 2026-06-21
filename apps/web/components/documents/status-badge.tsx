@@ -1,4 +1,3 @@
-import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import type { ElementType } from 'react';
 import { DocumentItem } from '@/types';
@@ -13,23 +12,23 @@ type StatusConfig = {
 const config: Record<DocumentItem['status'], StatusConfig> = {
   PENDING: {
     label: 'Pending',
-    className: 'bg-muted text-muted-foreground',
+    className: 'text-text-tertiary bg-surface-hover',
     icon: Clock,
   },
   PROCESSING: {
     label: 'Processing',
-    className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+    className: 'text-accent bg-accent-dim',
     icon: Loader2,
     spin: true,
   },
   COMPLETED: {
-    label: 'Completed',
-    className: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400',
+    label: 'Indexed',
+    className: 'text-text-secondary bg-surface-hover',
     icon: CheckCircle2,
   },
   FAILED: {
     label: 'Failed',
-    className: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+    className: 'text-destructive bg-destructive-dim',
     icon: XCircle,
   },
 };
@@ -38,9 +37,9 @@ export function StatusBadge({ status }: { status: DocumentItem['status'] }) {
   const { label, className, icon: Icon, spin } = config[status];
 
   return (
-    <Badge variant="outline" className={`gap-1.5 ${className}`}>
-      <Icon size={12} className={spin ? 'animate-spin' : ''} />
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${className}`}>
+      <Icon size={11} className={spin ? 'animate-spin' : ''} />
       {label}
-    </Badge>
+    </span>
   );
 }

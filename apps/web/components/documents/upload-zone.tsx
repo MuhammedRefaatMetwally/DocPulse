@@ -1,14 +1,19 @@
-"use client";
+'use client';
 
-import { useCallback, useState } from "react";
-import { useDropzone, type Accept, type FileRejection } from "react-dropzone";
-import { Progress } from "@/components/ui/progress";
-import { UploadCloud } from "lucide-react";
-import { api } from "@/lib/api";
-import { toast } from "sonner";
-import { AxiosError } from "axios";
+import { useCallback, useState } from 'react';
+import { useDropzone, type Accept, type FileRejection } from 'react-dropzone';
+import { Progress } from '@/components/ui/progress';
+import { UploadCloud, FileText } from 'lucide-react';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
+import { AxiosError } from 'axios';
 
-const MAX_SIZE = 25 * 1024 * 1024; // 25MB
+const MAX_SIZE = 25 * 1024 * 1024;
+
+const acceptedFileTypes: Accept = {
+  'application/pdf': ['.pdf'],
+  'text/plain': ['.txt'],
+};
 
 interface UploadZoneProps {
   workspaceId: string;
@@ -18,17 +23,13 @@ interface UploadZoneProps {
 export function UploadZone({ workspaceId, onUploadComplete }: UploadZoneProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [fileName, setFileName] = useState("");
-  const acceptedFileTypes: Accept = {
-    "application/pdf": [".pdf"],
-    "text/plain": [".txt"],
-  };
+  const [fileName, setFileName] = useState('');
+
   const onDrop = useCallback(
     async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
-      // Show rejection reasons
       for (const rejection of rejectedFiles) {
         toast.error(
-          `${rejection.file.name}: ${rejection.errors[0]?.message ?? "Invalid file"}`,
+          `${rejection.file.name}: ${rejection.errors[0]?.message ?? 'Invalid file'}`,
         );
       }
 
@@ -40,27 +41,28 @@ export function UploadZone({ workspaceId, onUploadComplete }: UploadZoneProps) {
         setProgress(0);
 
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append('file', file);
 
         try {
           await api.post(
             `/workspaces/${workspaceId}/documents/upload`,
             formData,
             {
-              headers: { "Content-Type": "multipart/form-data" },
+              headers: { 'Content-Type': 'multipart/form-data' },
               onUploadProgress: (e) => {
-                const pct = Math.round((e.loaded * 100) / (e.total ?? 1));
-                setProgress(pct);
+                setProgress(Math.round((e.loaded * 100) / (e.total ?? 1)));
               },
             },
           );
-          toast.success(`${file.name} uploaded — processing started`);
+          toast.success(`${file.name} uploaded`, {
+            description: 'Processing started — this may take a moment.',
+          });
           onUploadComplete();
         } catch (err) {
           const error = err as AxiosError<{ message: string }>;
-          toast.error(
-            `${file.name}: ${error.response?.data?.message ?? "Upload failed"}`,
-          );
+          toast.error(`Couldn't upload ${file.name}`, {
+            description: error.response?.data?.message ?? 'Try again.',
+          });
         }
       }
 
@@ -80,29 +82,38 @@ export function UploadZone({ workspaceId, onUploadComplete }: UploadZoneProps) {
   return (
     <div
       {...getRootProps()}
-      className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-        ${isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"}
-        ${uploading ? "pointer-events-none opacity-70" : ""}`}
+      className={`group relative rounded-lg border border-dashed transition-all cursor-pointer
+        ${isDragActive
+          ? 'border-accent bg-accent/[0.04]'
+          : 'border-border hover:border-border-strong hover:bg-surface/50'}
+        ${uploading ? 'pointer-events-none' : ''}`}
     >
       <input {...getInputProps()} />
 
-      {uploading ? (
-        <div className="space-y-3 max-w-sm mx-auto">
-          <p className="text-sm font-medium truncate">{fileName}</p>
-          <Progress value={progress} />
-          <p className="text-xs text-muted-foreground">Uploading {progress}%</p>
+      <div className="flex items-center gap-4 p-5">
+        <div
+          className={`flex items-center justify-center w-10 h-10 rounded-md shrink-0 transition-colors
+            ${isDragActive ? 'bg-accent-dim text-accent' : 'bg-surface text-text-tertiary group-hover:text-text-secondary'}`}
+        >
+          {uploading ? <FileText size={18} /> : <UploadCloud size={18} />}
         </div>
-      ) : (
-        <div className="space-y-2">
-          <UploadCloud className="mx-auto text-muted-foreground" size={32} />
-          <p className="font-medium">
-            {isDragActive ? "Drop file here" : "Drag & drop or click to upload"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            PDF or TXT, up to 25MB
-          </p>
-        </div>
-      )}
+
+        {uploading ? (
+          <div className="flex-1 space-y-1.5 min-w-0">
+            <p className="text-sm font-medium truncate">{fileName}</p>
+            <Progress value={progress} className="h-1 bg-surface" />
+          </div>
+        ) : (
+          <div className="flex-1">
+            <p className="text-sm font-medium">
+              {isDragActive ? 'Drop to upload' : 'Drag a file here, or click to browse'}
+            </p>
+            <p className="text-xs text-text-tertiary mt-0.5">
+              PDF or TXT, up to 25MB
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

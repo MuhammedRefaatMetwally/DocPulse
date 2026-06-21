@@ -1,0 +1,1 @@
+export const GROQ_CLIENT = 'GROQ_CLIENT';

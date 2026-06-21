@@ -10,7 +10,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 1000 * 60, // 1 minute
+            staleTime: 1000 * 60,
             retry: 1,
           },
         },
@@ -20,7 +20,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      <Toaster position="top-right" richColors />
+      <Toaster
+        position="top-right"
+        theme="dark"
+        toastOptions={{
+          style: {
+            background: '#13171F',
+            border: '1px solid #252B38',
+            color: '#E8EAED',
+          },
+        }}
+      />
     </QueryClientProvider>
   );
 }

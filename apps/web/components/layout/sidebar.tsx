@@ -3,23 +3,21 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  FileText,
-  Search,
+  FileStack,
+  Sparkles,
   Settings,
   LogOut,
-  LayoutDashboard,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
 import { useAuthStore } from '@/stores/auth.store';
 import { useWorkspaces } from '@/hooks/use-workspaces';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/documents', label: 'Documents', icon: FileText },
-  { href: '/dashboard/query', label: 'Query', icon: Search },
+  { href: '/dashboard/documents', label: 'Documents', icon: FileStack },
+  { href: '/dashboard/query', label: 'Query', icon: Sparkles },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -29,40 +27,62 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const { currentWorkspace } = useWorkspaces();
 
+  const initials = user?.name
+    ?.split(' ')
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
   return (
-    <aside className="w-64 border-r bg-card flex flex-col min-h-screen">
-      <div className="p-6 border-b">
-        <h1 className="text-xl font-semibold tracking-tight">DocPulse</h1>
-        {currentWorkspace ? (
-          <p className="text-xs text-muted-foreground mt-1 truncate">
-            {currentWorkspace.name}
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground mt-1">
-            Document Intelligence
-          </p>
-        )}
+    <aside className="w-60 flex flex-col h-screen sticky top-0 bg-bg border-r border-border">
+      {/* Workspace switcher */}
+      <div className="p-3">
+        <button className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-surface-hover transition-colors group">
+          <div className="flex items-center justify-center w-7 h-7 rounded-md bg-accent-dim text-accent text-xs font-semibold shrink-0">
+            {currentWorkspace?.name?.[0]?.toUpperCase() ?? 'D'}
+          </div>
+          <div className="flex-1 text-left min-w-0">
+            <p className="text-sm font-medium truncate leading-tight">
+              {currentWorkspace?.name ?? 'DocPulse'}
+            </p>
+            <p className="text-[11px] text-text-tertiary leading-tight">
+              Workspace
+            </p>
+          </div>
+          <ChevronsUpDown
+            size={14}
+            className="text-text-tertiary shrink-0 group-hover:text-text-secondary transition-colors"
+          />
+        </button>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <div className="h-px bg-border mx-3" />
+
+      {/* Nav */}
+      <nav className="flex-1 p-3 space-y-0.5">
+        <p className="px-2.5 pt-2 pb-1.5 text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
+          Workspace
+        </p>
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive =
-            item.href === '/dashboard'
-              ? pathname === '/dashboard'
-              : pathname.startsWith(item.href);
+          const isActive = pathname.startsWith(item.href);
 
           return (
-            <Link key={item.href} href={item.href}>
+            <Link key={item.href} href={item.href} className="block">
               <span
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+                  'relative flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
                   isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                    ? 'bg-surface text-text-primary'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover',
                 )}
               >
-                <Icon size={16} />
+                {/* Signature: activity accent line on active item */}
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-accent rounded-full" />
+                )}
+                <Icon size={16} className={isActive ? 'text-accent' : ''} />
                 {item.label}
               </span>
             </Link>
@@ -70,25 +90,28 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t space-y-3">
-        <Separator />
-        {user && (
-          <div className="px-3">
-            <p className="text-sm font-medium truncate">{user.name}</p>
-            <p className="text-xs text-muted-foreground truncate">
-              {user.email}
+      {/* User */}
+      <div className="p-3 border-t border-border">
+        <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-md">
+          <div className="flex items-center justify-center w-7 h-7 rounded-full bg-surface-hover text-text-primary text-xs font-medium shrink-0 border border-border">
+            {initials ?? '?'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate leading-tight">{user?.name}</p>
+            <p className="text-[11px] text-text-tertiary truncate leading-tight">
+              {user?.email}
             </p>
           </div>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-muted-foreground hover:text-destructive"
-          onClick={logout}
-        >
-          <LogOut size={16} className="mr-2" />
-          Sign out
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-text-tertiary hover:text-destructive shrink-0"
+            onClick={logout}
+            aria-label="Sign out"
+          >
+            <LogOut size={14} />
+          </Button>
+        </div>
       </div>
     </aside>
   );
