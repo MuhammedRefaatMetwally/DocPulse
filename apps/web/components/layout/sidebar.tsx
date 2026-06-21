@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
 import { useAuthStore } from '@/stores/auth.store';
+import { useWorkspaces } from '@/hooks/use-workspaces';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -26,18 +27,23 @@ export function Sidebar() {
   const pathname = usePathname();
   const { logout } = useAuth();
   const user = useAuthStore((s) => s.user);
+  const { currentWorkspace } = useWorkspaces();
 
   return (
     <aside className="w-64 border-r bg-card flex flex-col min-h-screen">
-      {/* Logo */}
       <div className="p-6 border-b">
         <h1 className="text-xl font-semibold tracking-tight">DocPulse</h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          Document Intelligence
-        </p>
+        {currentWorkspace ? (
+          <p className="text-xs text-muted-foreground mt-1 truncate">
+            {currentWorkspace.name}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground mt-1">
+            Document Intelligence
+          </p>
+        )}
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -64,7 +70,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* User section */}
       <div className="p-4 border-t space-y-3">
         <Separator />
         {user && (
