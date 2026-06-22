@@ -22,7 +22,7 @@ Built as a learning project to understand what actually goes into a production R
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         Frontend                            │
-│              Next.js 15 · shadcn/ui · Zustand               │
+│              Next.js  · shadcn/ui · Zustand               │
 │         React Query · SSE fetch stream · httpOnly auth       │
 └────────────────────────┬────────────────────────────────────┘
                          │ HTTP + SSE
@@ -116,7 +116,7 @@ Save to query_history (fire and forget)
 | Job queue | BullMQ 5 + Redis (Upstash) |
 | Embeddings | Google Gemini `gemini-embedding-001` |
 | Chat generation | Groq `llama-3.3-70b-versatile` (OpenAI-compatible) |
-| Frontend | Next.js 15, shadcn/ui, Tailwind CSS |
+| Frontend | Next.js , shadcn/ui, Tailwind CSS |
 | State management | React Query (server state) + Zustand (UI state) |
 | Auth | JWT · httpOnly cookies · refresh token rotation |
 | Hosting | Neon (PostgreSQL) · Upstash (Redis) |
@@ -219,7 +219,7 @@ docpulse/
 │   │   └── prisma/
 │   │       ├── schema.prisma
 │   │       └── migrations/
-│   └── web/                        # Next.js 15 frontend
+│   └── web/                        # Next.js  frontend
 │       └── src/
 │           ├── app/
 │           │   ├── (auth)/         # Login, register pages
