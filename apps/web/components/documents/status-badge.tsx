@@ -1,4 +1,3 @@
-import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import type { ElementType } from 'react';
 import { DocumentItem } from '@/types';
@@ -13,23 +12,23 @@ type StatusConfig = {
 const config: Record<DocumentItem['status'], StatusConfig> = {
   PENDING: {
     label: 'Pending',
-    className: 'bg-muted text-muted-foreground',
+    className: 'text-warning bg-warning-dim dark:bg-warning-dim/30 border border-warning/20 dark:border-warning/30',
     icon: Clock,
   },
   PROCESSING: {
     label: 'Processing',
-    className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+    className: 'text-accent bg-accent-dim dark:bg-accent-dim/30 border border-accent/20 dark:border-accent/30',
     icon: Loader2,
     spin: true,
   },
   COMPLETED: {
-    label: 'Completed',
-    className: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400',
+    label: 'Indexed',
+    className: 'text-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 dark:border-emerald-500/30',
     icon: CheckCircle2,
   },
   FAILED: {
     label: 'Failed',
-    className: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+    className: 'text-destructive bg-destructive-dim dark:bg-destructive-dim/30 border border-destructive/20 dark:border-destructive/30',
     icon: XCircle,
   },
 };
@@ -38,9 +37,9 @@ export function StatusBadge({ status }: { status: DocumentItem['status'] }) {
   const { label, className, icon: Icon, spin } = config[status];
 
   return (
-    <Badge variant="outline" className={`gap-1.5 ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${className}`}>
       <Icon size={12} className={spin ? 'animate-spin' : ''} />
       {label}
-    </Badge>
+    </span>
   );
 }

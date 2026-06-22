@@ -38,3 +38,37 @@ export interface DocumentItem {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface QuerySource {
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  chunkIndex: number;
+  score: number;
+}
+
+export interface QueryHistoryItem {
+  id: string;
+  query: string;
+  answer: string;
+  sources: QuerySource[];
+  tokensUsed: number;
+  latencyMs: number;
+  createdAt: string;
+}
+
+export interface QueryHistoryResponse {
+  items: QueryHistoryItem[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export type SseEvent =
+  | { type: 'sources'; sources: QuerySource[] }
+  | { type: 'delta'; content: string }
+  | { type: 'done'; tokensUsed: number; latencyMs: number }
+  | { type: 'error'; message: string };

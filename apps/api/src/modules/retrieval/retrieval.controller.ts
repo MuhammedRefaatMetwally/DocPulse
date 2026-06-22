@@ -6,16 +6,16 @@ import {
   Param,
   Query,
   UseGuards,
-  Sse,
-  MessageEvent,
+  Res,
+  HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiProduces,
 } from '@nestjs/swagger';
-import { Observable } from 'rxjs';
 import { RetrievalService } from './retrieval.service';
 import { QueryDto } from './dto/query.dto';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
@@ -30,15 +30,45 @@ import { WorkspaceRole } from '@/common/enums/workspace-role.enum';
 export class RetrievalController {
   constructor(private readonly retrievalService: RetrievalService) {}
 
-  @Sse()
+  @Post()
   @WorkspaceRoles(WorkspaceRole.VIEWER)
   @ApiOperation({ summary: 'Query documents with streaming SSE response' })
   @ApiProduces('text/event-stream')
-  query(
+  async query(
     @Param('workspaceId') workspaceId: string,
     @Body() dto: QueryDto,
-  ): Observable<MessageEvent> {
-    return this.retrievalService.queryStream(workspaceId, dto.query);
+    @Res() res: Response,
+  ): Promise<void> {
+    // Set SSE headers manually — body is now correctly parsed
+    // because this is a normal @Post() route, not @Sse()
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    });
+    res.flushHeaders();
+
+    const observable = this.retrievalService.queryStream(workspaceId, dto.query);
+
+    const subscription = observable.subscribe({
+      next: (event) => {
+        res.write(`data: ${event.data}\n\n`);
+      },
+      error: () => {
+        res.write(
+          `data: ${JSON.stringify({ type: 'error', message: 'Stream error occurred' })}\n\n`,
+        );
+        res.end();
+      },
+      complete: () => {
+        res.end();
+      },
+    });
+
+    // Clean up the Observable subscription if client disconnects
+    res.on('close', () => {
+      subscription.unsubscribe();
+    });
   }
 
   @Get('history')

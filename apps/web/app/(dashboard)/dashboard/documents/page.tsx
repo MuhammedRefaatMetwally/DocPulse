@@ -15,10 +15,10 @@ export default function DocumentsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4 max-w-4xl">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48 bg-surface" />
+        <Skeleton className="h-28 w-full bg-surface" />
+        <Skeleton className="h-64 w-full bg-surface" />
       </div>
     );
   }
@@ -26,12 +26,14 @@ export default function DocumentsPage() {
   if (isError) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3 text-center">
-        <AlertCircle className="text-destructive" size={32} />
-        <p className="text-muted-foreground">
-          Failed to load workspaces. Check your connection and try again.
+        <AlertCircle className="text-destructive" size={28} />
+        <p className="text-text-secondary text-sm">
+          Couldn&apos;t load your workspaces. Check your connection and try again.
         </p>
         <Button
           variant="outline"
+          size="sm"
+          className="border-border"
           onClick={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })}
         >
           Retry
@@ -47,11 +49,11 @@ export default function DocumentsPage() {
   if (!currentWorkspace) return null;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-8 fade-slide-in">
       <div>
-        <h1 className="text-2xl font-semibold">Documents</h1>
-        <p className="text-muted-foreground mt-1">
-          Upload documents to {currentWorkspace.name} for AI-powered search.
+        <h1 className="text-xl font-semibold tracking-tight">Documents</h1>
+        <p className="text-text-secondary text-sm mt-1">
+          Upload PDFs and text files to index for search and Q&A.
         </p>
       </div>
 

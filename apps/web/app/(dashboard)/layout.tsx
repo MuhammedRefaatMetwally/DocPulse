@@ -22,24 +22,18 @@ export default function DashboardLayout({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex">
-        {/* Sidebar skeleton */}
-        <div className="w-64 border-r bg-card p-4 space-y-4">
-          <Skeleton className="h-8 w-32" />
-          <div className="space-y-2 pt-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
+      <div className="min-h-screen flex bg-bg">
+        <div className="w-60 border-r border-border p-3 space-y-4">
+          <Skeleton className="h-10 w-full bg-surface" />
+          <div className="space-y-1 pt-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full bg-surface" />
             ))}
           </div>
         </div>
-        {/* Content skeleton */}
-        <div className="flex-1 p-6 space-y-4">
-          <Skeleton className="h-8 w-64" />
-          <div className="grid grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-40 w-full" />
-            ))}
-          </div>
+        <div className="flex-1 p-8 space-y-4">
+          <Skeleton className="h-8 w-48 bg-surface" />
+          <Skeleton className="h-32 w-full max-w-2xl bg-surface" />
         </div>
       </div>
     );
@@ -48,10 +42,10 @@ export default function DashboardLayout({
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-bg">
       <Sidebar />
-      <main className="flex-1 p-6 overflow-auto bg-background">
-        {children}
+      <main className="flex-1 overflow-auto">
+        <div className="max-w-3xl mx-auto px-8 py-10">{children}</div>
       </main>
     </div>
   );
