@@ -20,7 +20,6 @@ export class JwtRefreshGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
-    // Read refresh token from httpOnly cookie — not from body
     const refreshToken = request.cookies?.refresh_token;
 
     if (!refreshToken) {
@@ -40,11 +39,10 @@ export class JwtRefreshGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    // Attach to request for controller use
     request.user = {
       sub: stored.user.id,
       email: stored.user.email,
-      refreshToken, // raw token for rotation
+      refreshToken, 
     };
 
     return true;

@@ -33,7 +33,7 @@ async function bootstrap() {
     .setDescription('Multi-tenant RAG document intelligence platform')
     .setVersion('1.0')
     .addBearerAuth()
-    .addCookieAuth('refresh_token') // document cookie auth in Swagger
+    .addCookieAuth('refresh_token') 
     .build();
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
 

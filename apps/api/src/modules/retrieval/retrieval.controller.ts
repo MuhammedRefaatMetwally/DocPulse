@@ -39,8 +39,7 @@ export class RetrievalController {
     @Body() dto: QueryDto,
     @Res() res: Response,
   ): Promise<void> {
-    // Set SSE headers manually — body is now correctly parsed
-    // because this is a normal @Post() route, not @Sse()
+
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -65,7 +64,6 @@ export class RetrievalController {
       },
     });
 
-    // Clean up the Observable subscription if client disconnects
     res.on('close', () => {
       subscription.unsubscribe();
     });

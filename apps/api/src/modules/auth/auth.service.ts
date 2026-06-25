@@ -12,7 +12,6 @@ import { createHash, randomBytes } from 'crypto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
-// Cookie options — centralised so they're consistent across all endpoints
 export const cookieOptions = (config: ConfigService) => ({
   httpOnly: true,
   secure: config.get('NODE_ENV') === 'production',
@@ -75,7 +74,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    // Rotate — revoke old token
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
       data: { revoked: true },

@@ -74,7 +74,6 @@ describe('RetrievalService', () => {
       mockPrisma.$queryRaw.mockResolvedValue(mockChunks);
       mockPrisma.queryHistory.create.mockResolvedValue({});
 
-      // Mock async generator for streaming
       async function* fakeStream() {
         yield { text: 'Returns are ', usageMetadata: null };
         yield { text: 'allowed within 30 days.', usageMetadata: { totalTokenCount: 42 } };
@@ -188,7 +187,6 @@ describe('RetrievalService', () => {
 
   describe('getQueryHistory', () => {
     beforeEach(() => {
-      // Reset and setup queryHistory mocks for these tests
       mockPrisma.queryHistory.findMany = vi.fn();
       mockPrisma.queryHistory.count = vi.fn();
     });

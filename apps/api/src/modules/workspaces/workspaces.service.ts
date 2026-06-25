@@ -69,7 +69,6 @@ export class WorkspacesService {
   }
 
   async inviteMember(workspaceId: string, dto: InviteMemberDto) {
-    // Find user by email
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -77,7 +76,6 @@ export class WorkspacesService {
       throw new NotFoundException(`No user found with email ${dto.email}`);
     }
 
-    // Check not already a member
     const existing = await this.prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: user.id } },
     });
@@ -103,7 +101,6 @@ export class WorkspacesService {
     requesterId: string,
     dto: UpdateMemberRoleDto,
   ) {
-    // Prevent owner demotion
     const target = await this.prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: memberId } },
     });
@@ -111,7 +108,6 @@ export class WorkspacesService {
     if (target.role === WorkspaceRole.OWNER) {
       throw new ForbiddenException('Cannot change the role of the workspace owner');
     }
-    // Prevent self-demotion
     if (memberId === requesterId) {
       throw new ForbiddenException('Cannot change your own role');
     }

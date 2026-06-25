@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import { EmbeddingsService } from './embeddings.service';
 import { GEMINI_CLIENT } from './embeddings.constants';
 
-// Mock the Gemini client object directly — no constructor needed
 const mockEmbedContent = vi.fn();
 
 const mockGeminiClient = {

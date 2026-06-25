@@ -27,9 +27,7 @@ export function useAuth() {
   const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout');
-    } catch {
-      // proceed regardless
-    } finally {
+    } catch {    } finally {
       clearUser();
       router.push('/login');
     }

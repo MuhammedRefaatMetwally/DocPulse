@@ -10,7 +10,6 @@ datasource db {
   extensions = [vector]
 }
 
-// ─── Users ───────────────────────────────────────────────
 
 model User {
   id           String   @id @default(cuid())
@@ -40,7 +39,6 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-// ─── Workspaces ──────────────────────────────────────────
 
 model Workspace {
   id        String   @id @default(cuid())
@@ -94,7 +92,6 @@ model ApiKey {
   @@map("api_keys")
 }
 
-// ─── Documents ───────────────────────────────────────────
 
 enum DocumentStatus {
   PENDING
@@ -127,7 +124,6 @@ model Document {
   @@map("documents")
 }
 
-// ─── Ingestion Jobs ──────────────────────────────────────
 
 enum IngestionJobStatus {
   QUEUED
@@ -153,7 +149,6 @@ model IngestionJob {
   @@map("ingestion_jobs")
 }
 
-// ─── Chunks + Embeddings ─────────────────────────────────
 
 model DocumentChunk {
   id          String   @id @default(cuid())
@@ -163,7 +158,7 @@ model DocumentChunk {
   chunkIndex  Int
   startChar   Int
   endChar     Int
-  embedding   Unsupported("vector")?  // Add this line for pgvector
+  embedding   Unsupported("vector")? 
   metadata    Json     @default("{}")
   createdAt   DateTime @default(now())
 
@@ -174,7 +169,6 @@ model DocumentChunk {
   @@map("document_chunks")
 }
 
-// ─── Query History ───────────────────────────────────────
 
 model QueryHistory {
   id          String   @id @default(cuid())
