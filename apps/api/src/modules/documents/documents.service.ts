@@ -26,10 +26,8 @@ export class DocumentsService {
     userId: string,
     file: Express.Multer.File,
   ) {
-    // 1. Save file to local storage
     const storageKey = await this.storage.save(file.buffer, file.originalname);
 
-    // 2. Create document record
     const document = await this.prisma.document.create({
       data: {
         workspaceId,
@@ -42,12 +40,10 @@ export class DocumentsService {
       },
     });
 
-    // 3. Create ingestion job record
     const ingestionJob = await this.prisma.ingestionJob.create({
       data: { documentId: document.id, status: 'QUEUED' },
     });
 
-    // 4. Enqueue BullMQ job
     const bullJob = await this.ingestionQueue.add(
       'ingest-document',
       {
@@ -62,7 +58,6 @@ export class DocumentsService {
       },
     );
 
-    // 5. Update ingestion job with Bull job ID
     await this.prisma.ingestionJob.update({
       where: { id: ingestionJob.id },
       data: { bullJobId: bullJob.id as string },
@@ -115,10 +110,9 @@ export class DocumentsService {
     });
     if (!doc) throw new NotFoundException('Document not found');
 
-    // Delete storage file
     await this.storage.delete(doc.storageKey);
 
-    // Delete DB record (cascades to chunks + jobs)
+    
     await this.prisma.document.delete({ where: { id: documentId } });
 
     return { message: 'Document deleted successfully' };

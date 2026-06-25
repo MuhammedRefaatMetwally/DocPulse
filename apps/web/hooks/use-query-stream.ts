@@ -54,7 +54,7 @@ export function useQueryStream(workspaceId: string): UseQueryStreamResult {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include', // sends httpOnly cookies
+            credentials: 'include', 
             body: JSON.stringify({ query }),
             signal: controller.signal,
           },
@@ -78,9 +78,8 @@ export function useQueryStream(workspaceId: string): UseQueryStreamResult {
 
           buffer += decoder.decode(value, { stream: true });
 
-          // SSE messages are separated by \n\n
           const messages = buffer.split('\n\n');
-          buffer = messages.pop() ?? ''; // keep incomplete message in buffer
+          buffer = messages.pop() ?? ''; 
 
           for (const message of messages) {
             const line = message.trim();
@@ -108,13 +107,11 @@ export function useQueryStream(workspaceId: string): UseQueryStreamResult {
                   break;
               }
             } catch {
-              // Skip malformed SSE chunks
             }
           }
         }
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
-          // User cancelled — not an error state
           return;
         }
         setError('Failed to get a response. Please try again.');

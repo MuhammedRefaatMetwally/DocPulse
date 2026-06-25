@@ -10,7 +10,6 @@ export interface JwtPayload {
   email: string;
 }
 
-// Extract JWT from httpOnly cookie instead of Authorization header
 const cookieExtractor = (req: Request): string | null => {
   return req?.cookies?.access_token ?? null;
 };
@@ -22,7 +21,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly usersService: UsersService,
   ) {
     super({
-      // Try cookie first, fall back to Bearer header for Swagger/API clients
       jwtFromRequest: (req: Request) => {
         return cookieExtractor(req) ?? extractBearerToken(req);
       },
@@ -38,7 +36,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 }
 
-// Fallback extractor for Swagger and direct API clients
 function extractBearerToken(req: Request): string | null {
   const auth = req?.headers?.authorization;
   if (auth?.startsWith('Bearer ')) return auth.slice(7);

@@ -84,7 +84,6 @@ export class RetrievalService {
 
           if (cancelled) return;
 
-          // Groq — OpenAI-compatible streaming chat completion
           const stream = await this.groq.chat.completions.create({
             model: this.chatModel,
             messages: [
@@ -119,7 +118,6 @@ export class RetrievalService {
             }
           }
 
-          // Rough token estimate (Groq doesn't always send usage in stream chunks)
           totalTokens = Math.round(fullAnswer.length / 4);
 
           const latencyMs = Date.now() - startTime;

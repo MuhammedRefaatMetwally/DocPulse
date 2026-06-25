@@ -34,8 +34,6 @@ export class WorkspaceRoleGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const userId: string | undefined = request.user?.sub;
 
-    // Always read workspaceId from route params only — never from body
-    // Body is not reliably available in guards for SSE/streaming endpoints
     const workspaceId: string | undefined = request.params?.workspaceId;
 
     if (!userId || !workspaceId) {

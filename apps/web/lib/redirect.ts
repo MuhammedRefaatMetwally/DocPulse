@@ -14,10 +14,8 @@ export function getSafeRedirectPath(
 
   if (!from.startsWith('/') || from.startsWith('//')) return fallback;
 
-  // Must not contain a protocol
   if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(from)) return fallback;
 
-  // Must not contain @  (//user@host style attacks)
   if (from.includes('@')) return fallback;
 
   return from;

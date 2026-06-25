@@ -16,12 +16,10 @@ export class StorageService {
   }
 
   async save(buffer: Buffer, filename: string): Promise<string> {
-    // Sanitize — strip path separators and dangerous chars
     const safeName = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
     const storageKey = `${Date.now()}-${safeName}`;
     const filePath = path.join(this.uploadDir, storageKey);
 
-    // Verify resolved path stays within uploadDir (path traversal guard)
     if (!filePath.startsWith(this.uploadDir)) {
       throw new BadRequestException('Invalid file path');
     }
